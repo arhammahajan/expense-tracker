@@ -17,6 +17,7 @@ app = Flask(__name__)
 DB = client['expense-tracker']
 USERS = DB.users
 EXPENSES = DB.expenses
+INCOMES = DB.incomes
 
 @app.route('/', methods=['GET'])
 def index():
@@ -31,14 +32,23 @@ def signup():
     USERS.insert_one(user)
     return "User created successfully"
 
-@app.route('/add', methods=['POST'])
-def add():
+@app.route('/addexpense', methods=['POST'])
+def addexpense():
     headers = request.headers
     user = USERS.find_one(dict(username = headers["username"], password = headers["password"]))
     if not user:
         return "User does not exist, please signup"
     expense = EXPENSES.insert_one(dict(userid=user["_id"], amount=headers["amount"],category= headers["category"],description= headers["description"], date=headers["date"]))
     return str(expense.inserted_id)
+
+@app.route('/addincome', methods=['POST'])
+def addincome():
+    headers = request.headers
+    user = USERS.find_one(dict(username = headers["username"], password = headers["password"]))
+    if not user:
+        return "User does not exist, please signup"
+    income = INCOMES.insert_one(dict(userid=user["_id"], amount=headers["amount"],category= headers["category"],description= headers["description"], date=headers["date"]))
+    return str(income.inserted_id)
 
 @app.route('/list', methods=['GET'])
 def listexpenses(): 
@@ -47,7 +57,9 @@ def listexpenses():
     if not user:
         return "User does not exist, please signup"
     expenses = list(EXPENSES.find({"userid":user["_id"]}))
-    return json.loads(json_util.dumps(expenses))
+    incomes = list(INCOMES.find({"userid":user["_id"]}))
+    accounts = dict(incomes = incomes, expenses = expenses)
+    return json.loads(json_util.dumps(accounts))
 
 @app.route('/delete', methods=['DELETE'])
 def delete():
@@ -58,6 +70,10 @@ def delete():
     expense = EXPENSES.find_one_and_delete({"_id":ObjectId(headers["id"])})
     if expense:
         return "Expense deleted successfully!"
+    else:
+        income = INCOMES.find_one_and_delete({"_id":ObjectId(headers["id"])})
+        if income: return "Income deleted successfully!" 
+        else : return "id not found"
     
 @app.route('/update', methods=['PUT'])
 def update():
@@ -65,13 +81,76 @@ def update():
     user = USERS.find_one(dict(username = headers["username"], password = headers["password"]))
     if not user:
         return "User does not exist, please signup"
-    updatedexpense = dict()
-    updatedexpense["$set"] = dict(userid=user["_id"], amount=headers["amount"],category= headers["category"],description= headers["description"], date=headers["date"])
-    expense = EXPENSES.find_one_and_update({"_id":ObjectId(headers["id"])}, updatedexpense)
-    print(expense)
+    updatedaccount = dict()
+    updatedaccount["$set"] = dict(userid=user["_id"], amount=headers["amount"],category= headers["category"],description= headers["description"], date=headers["date"])
+    expense = EXPENSES.find_one_and_update({"_id":ObjectId(headers["id"])}, updatedaccount)
+
     if expense:
         return "Expense updated successfully!"
+    else:
+        income = INCOMES.find_one_and_update({"_id":ObjectId(headers["id"])}, updatedaccount)
+        if income: return "Income updated successfully"
+        else: "id not found"
+
+@app.route('/totalexpense', methods=['GET'])
+def totalexpense():
+    headers = request.headers
+    user = USERS.find_one(dict(username = headers["username"], password = headers["password"]))
+    if not user:
+        return "User does not exist, please signup"
     
+    pipeline = [
+    {
+        '$match': {
+            'userid': ObjectId(user["_id"]),
+        }
+    }  
+]
+    expenses = list(map(lambda y:float(y),list(map(lambda x: x["amount"],list(EXPENSES.aggregate(pipeline))))))
+    totalexpenses = sum(expenses)
+    return str(totalexpenses)
+
+@app.route('/totalincome', methods=['GET'])
+def totalincome():
+    headers = request.headers
+    user = USERS.find_one(dict(username = headers["username"], password = headers["password"]))
+    if not user:
+        return "User does not exist, please signup"
+    
+    pipeline = [
+    {
+        '$match': {
+            'userid': ObjectId(user["_id"]),
+        }
+    }  
+]
+    incomes = list(map(lambda y:float(y),list(map(lambda x: x["amount"],list(INCOMES.aggregate(pipeline))))))
+    totalincomes = sum(incomes)
+    return str(totalincomes)
+
+@app.route('/total', methods=['GET'])
+def total():
+    headers = request.headers
+    user = USERS.find_one(dict(username = headers["username"], password = headers["password"]))
+    if not user:
+        return "User does not exist, please signup"
+    pipeline = [
+    {
+        '$match': {
+            'userid': ObjectId(user["_id"]),
+        }
+    }  
+]
+    incomes = list(map(lambda y:float(y),list(map(lambda x: x["amount"],list(INCOMES.aggregate(pipeline))))))
+    totalincomes = sum(incomes)
+
+    expenses = list(map(lambda y:float(y),list(map(lambda x: x["amount"],list(EXPENSES.aggregate(pipeline))))))
+    totalexpenses = sum(expenses)
+
+    total = totalincomes - totalexpenses
+    return str(total)
+
+
 # @app.route('/barplot', methods=['GET'])
 # def barplot():
 #     headers = request.headers
